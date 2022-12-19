@@ -1,0 +1,84 @@
+
+**** Declare in:
+**** SE11->Enter View->Utilities->Table maintenance Generator->Enviroment->Modification->Events-> Type = 01 , Routine = check
+
+
+FORM check.
+
+  FIELD-SYMBOLS:
+    <fs_xtotal>    TYPE x,
+    <fs_total_key> TYPE x.
+
+  DATA:
+    lv_where      TYPE string,
+    ls_hsbc_invac TYPE yfi_v_hsbc_invac.
+
+
+******************** Check fields ********************
+
+  lv_where = 'action = 'D'.
+
+  LOOP AT total ASSIGNING FIELD-SYMBOL(<fs_total>)
+                WHERE (lv_where).
+
+    MOVE-CORRESPONDING <fs_total> TO ls_hsbc_invac.
+
+    SELECT SINGLE mandt
+    FROM yfi_hsbc_inv_cur
+    WHERE  banks           = @ls_hsbc_invac-banks
+    AND    bank_code       = @ls_hsbc_invac-bank_code
+    AND    branch          = @ls_hsbc_invac-branch
+    AND    account_number  = @ls_hsbc_invac-account_number
+    INTO @DATA(lv_mandt).
+
+    IF sy-subrc = 0.
+      MESSAGE i230(yfi).
+      vim_abort_saving = abap_true.
+      EXIT.
+    ENDIF.
+
+  ENDLOOP.
+
+  IF vim_abort_saving = abap_true. "Error
+    RETURN.
+  ENDIF.
+
+******************** Update fields ********************
+  lv_where = 'action is not initial and action <> 'D'.
+
+  DATA(lv_date) = sy-datum.
+  DATA(lv_time) = sy-uzeit.
+
+  LOOP AT total ASSIGNING <fs_total>
+                WHERE (lv_where).
+
+    MOVE-CORRESPONDING <fs_total> TO ls_hsbc_invac.
+
+    ls_hsbc_invac-last_user      = sy-uname .
+    ls_hsbc_invac-last_user_date = lv_date.
+    ls_hsbc_invac-last_user_time = lv_time.
+
+    CLEAR:
+      ls_hsbc_invac-approve_user_flag,
+      ls_hsbc_invac-approve_user,
+      ls_hsbc_invac-approve_user_date,
+      ls_hsbc_invac-approve_user_time.
+
+    MOVE-CORRESPONDING ls_hsbc_invac TO <fs_total>.
+
+    ASSIGN:
+      <fs_total>                   TO <fs_xtotal> CASTING,
+      <fs_xtotal>(x_header-keylen) TO <fs_total_key>.
+
+    READ TABLE extract ASSIGNING FIELD-SYMBOL(<fs_extract>)
+                       WITH KEY <fs_total_key>.
+
+    IF sy-subrc EQ 0.
+      <fs_extract> = <fs_total>.
+    ENDIF.
+
+  ENDLOOP.
+
+  IF vim_abort_saving = abap_false.
+    sy-subrc = 0.
+  ENDIF.
